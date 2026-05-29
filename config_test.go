@@ -3,7 +3,9 @@ package lnd
 import (
 	"fmt"
 	"testing"
+	"time"
 
+	"github.com/btcsuite/btcd/chaincfg"
 	"github.com/lightningnetwork/lnd/chainreg"
 	"github.com/lightningnetwork/lnd/routing"
 	"github.com/stretchr/testify/require"
@@ -114,6 +116,53 @@ func TestSupplyEnvValue(t *testing.T) {
 			require.Equal(t, test.expected, result)
 		})
 	}
+}
+
+// TestApplySigNetBlockTime tests that custom signet block times update the
+// target block interval used for header difficulty validation.
+func TestApplySigNetBlockTime(t *testing.T) {
+	t.Parallel()
+
+	t.Run("valid block time", func(t *testing.T) {
+		t.Parallel()
+
+		params := chaincfg.CustomSignetParams(
+			chaincfg.DefaultSignetChallenge,
+			chaincfg.DefaultSignetDNSSeeds,
+		)
+		require.NoError(
+			t, applySigNetBlockTime(&params, 30*time.Second),
+		)
+
+		require.Equal(t, 30*time.Second, params.TargetTimePerBlock)
+		require.Equal(t, 14*24*time.Hour, params.TargetTimespan)
+		require.Equal(
+			t, int64(40320),
+			int64(params.TargetTimespan/params.TargetTimePerBlock),
+		)
+	})
+
+	t.Run("sub-second block time", func(t *testing.T) {
+		t.Parallel()
+
+		params := chaincfg.CustomSignetParams(
+			chaincfg.DefaultSignetChallenge,
+			chaincfg.DefaultSignetDNSSeeds,
+		)
+		err := applySigNetBlockTime(&params, time.Millisecond)
+		require.ErrorContains(t, err, "at least one second")
+	})
+
+	t.Run("block time exceeds target timespan", func(t *testing.T) {
+		t.Parallel()
+
+		params := chaincfg.CustomSignetParams(
+			chaincfg.DefaultSignetChallenge,
+			chaincfg.DefaultSignetDNSSeeds,
+		)
+		err := applySigNetBlockTime(&params, params.TargetTimespan+time.Second)
+		require.ErrorContains(t, err, "must not exceed target timespan")
+	})
 }
 
 // TestValidateConfigTrickleDelay tests that the TrickleDelay configuration

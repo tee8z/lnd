@@ -1349,6 +1349,15 @@ func ValidateConfig(cfg Config, interceptor signal.Interceptor, fileParser,
 		chainParams := chaincfg.CustomSignetParams(
 			sigNetChallenge, sigNetSeeds,
 		)
+		if cfg.Bitcoin.SigNetBlockTime != 0 {
+			err := applySigNetBlockTime(
+				&chainParams, cfg.Bitcoin.SigNetBlockTime,
+			)
+			if err != nil {
+				return nil, mkErr("invalid signet block "+
+					"time: %v", err)
+			}
+		}
 		cfg.ActiveNetParams.Params = &chainParams
 	}
 	if numNets > 1 {
@@ -2499,6 +2508,26 @@ func configToFlatMap(cfg Config) (map[string]string,
 	printConfig(reflect.ValueOf(cfg), "")
 
 	return result, deprecated, nil
+}
+
+// applySigNetBlockTime updates the expected block interval used by custom
+// signet header validation. This is needed for custom signets whose backing
+// bitcoind nodes were started with -signetblocktime.
+func applySigNetBlockTime(params *chaincfg.Params,
+	blockTime time.Duration) error {
+
+	if blockTime < time.Second {
+		return fmt.Errorf("must be at least one second")
+	}
+
+	if blockTime > params.TargetTimespan {
+		return fmt.Errorf("must not exceed target timespan %v",
+			params.TargetTimespan)
+	}
+
+	params.TargetTimePerBlock = blockTime
+
+	return nil
 }
 
 // logWarningsForDeprecation logs a warning if a deprecated config option is
